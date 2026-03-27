@@ -145,9 +145,63 @@ with st.form("formulario_reserva", clear_on_submit=True):
     with col2:
         nueva_actividad = st.text_input("Nombre del Servicio o Actividad")
         nuevo_responsable = st.text_input("Nombre de quien reserva")
-        # 👇 ¡Acá movimos el campo de repetir a la columna derecha! 👇
         semanas_repetir = st.number_input("Repetir por semanas adicionales", min_value=0, max_value=52, value=0, step=1, help="0 = Solo ese día. 2 = Ese día y las próximas 2 semanas.")
         
     submit_button = st.form_submit_button("Confirmar Reserva")
     
-    # ... (A partir de acá sigue tu lógica del submit_button igual que antes) ...
+    if submit_button:
+        nuevo_inicio_min = int(nueva_hora_inicio.split(":")[0]) * 60 + int(nueva_hora_inicio.split(":")[1])
+        nuevo_fin_min = int(nueva_hora_fin.split(":")[0]) * 60 + int(nueva_hora_fin.split(":")[1])
+
+        if not nueva_actividad or not nuevo_responsable:
+            st.warning("Por favor, completá la actividad y el responsable.")
+        elif nuevo_inicio_min >= nuevo_fin_min:
+            st.error("La hora de fin debe ser posterior a la hora de inicio.")
+        else:
+            # --- VALIDACIÓN DE SOLAPAMIENTO MULTI-SEMANA ---
+            fechas_con_conflicto = []
+            
+            # Generamos todas las fechas que el usuario quiere reservar
+            fechas_a_reservar = [nueva_fecha + datetime.timedelta(weeks=i) for i in range(semanas_repetir + 1)]
+            
+            for fecha_evaluar in fechas_a_reservar:
+                reservas_del_dia = df[(df["Espacio"] == espacio_elegido) & (df["Fecha"] == str(fecha_evaluar))]
+                
+                for _, fila in reservas_del_dia.iterrows():
+                    try:
+                        h_ini_existente = str(fila["Hora Inicio"])[:5]
+                        h_fin_existente = str(fila["Hora Fin"])[:5]
+                        
+                        existente_inicio_min = int(h_ini_existente.split(":")[0]) * 60 + int(h_ini_existente.split(":")[1])
+                        existente_fin_min = int(h_fin_existente.split(":")[0]) * 60 + int(h_fin_existente.split(":")[1])
+                    except (ValueError, IndexError):
+                        continue
+                    
+                    if (nuevo_inicio_min < existente_fin_min) and (nuevo_fin_min > existente_inicio_min):
+                        fechas_con_conflicto.append(fecha_evaluar.strftime("%d/%m/%Y"))
+                        break 
+            
+            if fechas_con_conflicto:
+                fechas_str = ", ".join(fechas_con_conflicto)
+                st.error(f"❌ El horario está ocupado en las siguientes fechas: {fechas_str}. Modificá las semanas o el horario.")
+            else:
+                nuevos_registros = []
+                for fecha_guardar in fechas_a_reservar:
+                    nuevos_registros.append({
+                        "Fecha": str(fecha_guardar),
+                        "Espacio": espacio_elegido,
+                        "Hora Inicio": nueva_hora_inicio,
+                        "Hora Fin": nueva_hora_fin,
+                        "Actividad": nueva_actividad,
+                        "Responsable": nuevo_responsable
+                    })
+                
+                df_actualizado = pd.concat([df, pd.DataFrame(nuevos_registros)], ignore_index=True)
+                conn.update(data=df_actualizado)
+                
+                if semanas_repetir > 0:
+                    st.success(f"¡{semanas_repetir + 1} reservas guardadas con éxito!")
+                else:
+                    st.success("¡Reserva guardada con éxito!")
+                    
+                st.rerun()
