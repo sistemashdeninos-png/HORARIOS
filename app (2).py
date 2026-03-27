@@ -43,7 +43,7 @@ with col_nav3:
 
 df_filtrado = df[df["Espacio"] == espacio_elegido].copy()
 
-# --- LÓGICA DEL CALENDARIO SEMANAL (INTERVALOS DE 30 MIN) ---
+# --- LÓGICA DEL CALENDARIO SEMANAL ---
 hoy_real = datetime.date.today()
 dia_referencia = hoy_real + datetime.timedelta(weeks=st.session_state.semana_offset)
 inicio_semana = dia_referencia - datetime.timedelta(days=dia_referencia.weekday())
@@ -54,13 +54,18 @@ nombres_dias = ["Lunes", "Martes", "Miércoles", "Jueves", "Viernes", "Sábado",
 
 columnas_grilla = [f"{nombres_dias[i]} {fechas_semana[i].strftime('%d-%m')}" for i in range(7)]
 
-# Generamos intervalos cada 30 minutos desde las 08:00 hasta las 20:30
 horarios = []
 for h in range(8, 21):
     horarios.append(f"{h:02d}:00")
     horarios.append(f"{h:02d}:30")
 
-grilla = pd.DataFrame(index=horarios, columns=columnas_grilla, data="")
+# PALETA DE COLORES (Azules, verdes, púrpuras, dorados)
+paleta_colores = ["#005f99", "#2e8b57", "#800080", "#b8860b", "#cd5c5c", "#4682b4", "#556b2f", "#d2691e"]
+colores_asignados = {}
+
+# DOS GRILLAS: Una para el texto y otra para guardar el color de fondo
+grilla_texto = pd.DataFrame(index=horarios, columns=columnas_grilla, data="")
+grilla_color = pd.DataFrame(index=horarios, columns=columnas_grilla, data="")
 
 if not df_filtrado.empty:
     df_filtrado["Fecha"] = df_filtrado["Fecha"].astype(str)
@@ -74,44 +79,59 @@ if not df_filtrado.empty:
             indice_dia = fechas_str.index(fecha_reserva)
             columna_destino = columnas_grilla[indice_dia]
             
-            # Convertimos las horas a "minutos desde las 00:00" para calcular franjas exactas
+            actividad = str(fila['Actividad'])
+            
+            # Asignamos un color fijo a cada tipo de actividad
+            if actividad not in colores_asignados:
+                colores_asignados[actividad] = paleta_colores[len(colores_asignados) % len(paleta_colores)]
+            color_actual = colores_asignados[actividad]
+            
             try:
-                # Nos quedamos con los primeros 5 caracteres (ej. "10:30" de "10:30:00")
                 h_ini_str = str(fila["Hora Inicio"])[:5]
                 h_fin_str = str(fila["Hora Fin"])[:5]
-                
                 inicio_min = int(h_ini_str.split(":")[0]) * 60 + int(h_ini_str.split(":")[1])
                 fin_min = int(h_fin_str.split(":")[0]) * 60 + int(h_fin_str.split(":")[1])
             except (ValueError, IndexError):
                 continue 
             
-            # Evaluamos cada bloque de 30 minutos de nuestra grilla
+            # Recolectamos los bloques de 30 minutos que ocupa la reserva
+            slots_ocupados = []
             for slot in horarios:
                 slot_min = int(slot.split(":")[0]) * 60 + int(slot.split(":")[1])
-                
-                # Si el bloque está dentro del horario de la reserva (incluye el inicio, no pinta el final)
                 if inicio_min <= slot_min < fin_min:
-                    texto_reserva = str(fila['Actividad'])
-                    
-                    if grilla.at[slot, columna_destino] == "":
-                        grilla.at[slot, columna_destino] = texto_reserva
+                    slots_ocupados.append(slot)
+            
+            if not slots_ocupados:
+                continue
+                
+            # Calculamos el casillero del medio exacto
+            medio_idx = len(slots_ocupados) // 2
+            
+            for i, slot in enumerate(slots_ocupados):
+                # Pintamos todos los casilleros en la grilla de colores
+                grilla_color.at[slot, columna_destino] = color_actual
+                
+                # Escribimos el nombre solo en el casillero del medio
+                if i == medio_idx:
+                    if grilla_texto.at[slot, columna_destino] == "":
+                        grilla_texto.at[slot, columna_destino] = actividad
                     else:
-                        # Si ya hay algo escrito (solapamiento), lo mostramos también
-                        if texto_reserva not in grilla.at[slot, columna_destino]:
-                            grilla.at[slot, columna_destino] += f" | {texto_reserva}"
+                        grilla_texto.at[slot, columna_destino] += f" | {actividad}"
 
-# --- FUNCIÓN PARA DAR COLOR ---
-def pintar_celdas(val):
-    if val != "":
-        return 'background-color: #005f99; color: white; font-weight: bold; text-align: center;'
-    return ''
+# --- FUNCIÓN PARA APLICAR COLORES DESDE LA GRILLA INVISIBLE ---
+def aplicar_colores(df_base):
+    df_estilos = pd.DataFrame(index=df_base.index, columns=df_base.columns, data="")
+    for col in df_base.columns:
+        for idx in df_base.index:
+            color = grilla_color.at[idx, col]
+            if color != "":
+                # Aplicamos el color de fondo y centramos el texto
+                df_estilos.at[idx, col] = f'background-color: {color}; color: white; font-weight: bold; text-align: center;'
+    return df_estilos
 
-try:
-    grilla_estilada = grilla.style.map(pintar_celdas)
-except AttributeError:
-    grilla_estilada = grilla.style.applymap(pintar_celdas)
+# Aplicamos los estilos pasando la grilla entera (axis=None)
+grilla_estilada = grilla_texto.style.apply(aplicar_colores, axis=None)
 
-# Aumentamos un poco la altura de la tabla para que se vean bien todos los bloques de 30 min
 st.dataframe(grilla_estilada, use_container_width=True, height=600)
 
 st.divider()
@@ -124,7 +144,7 @@ with st.form("formulario_reserva", clear_on_submit=True):
     
     with col1:
         nueva_fecha = st.date_input("Fecha de uso")
-        nueva_hora_inicio = st.time_input("Hora de inicio (ej. 10:00, 10:30)", step=1800) # step=1800 fuerza saltos de 30 min
+        nueva_hora_inicio = st.time_input("Hora de inicio (ej. 10:00, 10:30)", step=1800)
         nueva_hora_fin = st.time_input("Hora de fin (ej. 11:00, 11:30)", step=1800)
         
     with col2:
@@ -142,7 +162,7 @@ with st.form("formulario_reserva", clear_on_submit=True):
             nuevo_registro = pd.DataFrame([{
                 "Fecha": str(nueva_fecha),
                 "Espacio": espacio_elegido,
-                "Hora Inicio": str(nueva_hora_inicio)[:5], # Guardamos solo HH:MM
+                "Hora Inicio": str(nueva_hora_inicio)[:5],
                 "Hora Fin": str(nueva_hora_fin)[:5],
                 "Actividad": nueva_actividad,
                 "Responsable": nuevo_responsable
