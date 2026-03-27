@@ -59,11 +59,9 @@ for h in range(8, 21):
     horarios.append(f"{h:02d}:00")
     horarios.append(f"{h:02d}:30")
 
-# PALETA DE COLORES (Azules, verdes, púrpuras, dorados)
 paleta_colores = ["#005f99", "#2e8b57", "#800080", "#b8860b", "#cd5c5c", "#4682b4", "#556b2f", "#d2691e"]
 colores_asignados = {}
 
-# DOS GRILLAS: Una para el texto y otra para guardar el color de fondo
 grilla_texto = pd.DataFrame(index=horarios, columns=columnas_grilla, data="")
 grilla_color = pd.DataFrame(index=horarios, columns=columnas_grilla, data="")
 
@@ -80,8 +78,6 @@ if not df_filtrado.empty:
             columna_destino = columnas_grilla[indice_dia]
             
             actividad = str(fila['Actividad'])
-            
-            # Asignamos un color fijo a cada tipo de actividad
             if actividad not in colores_asignados:
                 colores_asignados[actividad] = paleta_colores[len(colores_asignados) % len(paleta_colores)]
             color_actual = colores_asignados[actividad]
@@ -94,7 +90,6 @@ if not df_filtrado.empty:
             except (ValueError, IndexError):
                 continue 
             
-            # Recolectamos los bloques de 30 minutos que ocupa la reserva
             slots_ocupados = []
             for slot in horarios:
                 slot_min = int(slot.split(":")[0]) * 60 + int(slot.split(":")[1])
@@ -104,32 +99,25 @@ if not df_filtrado.empty:
             if not slots_ocupados:
                 continue
                 
-            # Calculamos el casillero del medio exacto
             medio_idx = len(slots_ocupados) // 2
             
             for i, slot in enumerate(slots_ocupados):
-                # Pintamos todos los casilleros en la grilla de colores
                 grilla_color.at[slot, columna_destino] = color_actual
-                
-                # Escribimos el nombre solo en el casillero del medio
                 if i == medio_idx:
                     if grilla_texto.at[slot, columna_destino] == "":
                         grilla_texto.at[slot, columna_destino] = actividad
                     else:
                         grilla_texto.at[slot, columna_destino] += f" | {actividad}"
 
-# --- FUNCIÓN PARA APLICAR COLORES DESDE LA GRILLA INVISIBLE ---
 def aplicar_colores(df_base):
     df_estilos = pd.DataFrame(index=df_base.index, columns=df_base.columns, data="")
     for col in df_base.columns:
         for idx in df_base.index:
             color = grilla_color.at[idx, col]
             if color != "":
-                # Aplicamos el color de fondo y centramos el texto
                 df_estilos.at[idx, col] = f'background-color: {color}; color: white; font-weight: bold; text-align: center;'
     return df_estilos
 
-# Aplicamos los estilos pasando la grilla entera (axis=None)
 grilla_estilada = grilla_texto.style.apply(aplicar_colores, axis=None)
 
 st.dataframe(grilla_estilada, use_container_width=True, height=600)
@@ -154,22 +142,51 @@ with st.form("formulario_reserva", clear_on_submit=True):
     submit_button = st.form_submit_button("Confirmar Reserva")
     
     if submit_button:
+        # Convertimos las nuevas horas a minutos para compararlas fácilmente
+        nuevo_inicio_min = nueva_hora_inicio.hour * 60 + nueva_hora_inicio.minute
+        nuevo_fin_min = nueva_hora_fin.hour * 60 + nueva_hora_fin.minute
+
         if not nueva_actividad or not nuevo_responsable:
             st.warning("Por favor, completá la actividad y el responsable.")
-        elif nueva_hora_inicio >= nueva_hora_fin:
+        elif nuevo_inicio_min >= nuevo_fin_min:
             st.error("La hora de fin debe ser posterior a la hora de inicio.")
         else:
-            nuevo_registro = pd.DataFrame([{
-                "Fecha": str(nueva_fecha),
-                "Espacio": espacio_elegido,
-                "Hora Inicio": str(nueva_hora_inicio)[:5],
-                "Hora Fin": str(nueva_hora_fin)[:5],
-                "Actividad": nueva_actividad,
-                "Responsable": nuevo_responsable
-            }])
+            # --- VALIDACIÓN DE SOLAPAMIENTO ---
+            solapamiento = False
             
-            df_actualizado = pd.concat([df, nuevo_registro], ignore_index=True)
-            conn.update(data=df_actualizado)
+            # Buscamos si ya hay reservas para esa sala en esa fecha
+            reservas_del_dia = df[(df["Espacio"] == espacio_elegido) & (df["Fecha"] == str(nueva_fecha))]
             
-            st.success("¡Reserva guardada con éxito!")
-            st.rerun()
+            for _, fila in reservas_del_dia.iterrows():
+                try:
+                    h_ini_existente = str(fila["Hora Inicio"])[:5]
+                    h_fin_existente = str(fila["Hora Fin"])[:5]
+                    
+                    existente_inicio_min = int(h_ini_existente.split(":")[0]) * 60 + int(h_ini_existente.split(":")[1])
+                    existente_fin_min = int(h_fin_existente.split(":")[0]) * 60 + int(h_fin_existente.split(":")[1])
+                except (ValueError, IndexError):
+                    continue
+                
+                # Fórmula matemática para detectar si dos rangos de tiempo se cruzan
+                if (nuevo_inicio_min < existente_fin_min) and (nuevo_fin_min > existente_inicio_min):
+                    solapamiento = True
+                    break # Si encontramos un choque, dejamos de buscar
+            
+            if solapamiento:
+                st.error("❌ El horario seleccionado ya está ocupado (total o parcialmente). Por favor, revisá la grilla e intentá con otra franja.")
+            else:
+                # Si no hay solapamiento, guardamos los datos
+                nuevo_registro = pd.DataFrame([{
+                    "Fecha": str(nueva_fecha),
+                    "Espacio": espacio_elegido,
+                    "Hora Inicio": str(nueva_hora_inicio)[:5],
+                    "Hora Fin": str(nueva_hora_fin)[:5],
+                    "Actividad": nueva_actividad,
+                    "Responsable": nuevo_responsable
+                }])
+                
+                df_actualizado = pd.concat([df, nuevo_registro], ignore_index=True)
+                conn.update(data=df_actualizado)
+                
+                st.success("¡Reserva guardada con éxito!")
+                st.rerun()
