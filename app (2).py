@@ -66,6 +66,19 @@ with col_nav3:
 
 df_filtrado = df[df["Espacio"] == espacio_elegido].copy()
 
+# --- LÓGICA DE COLORES FIJOS GLOBALES ---
+paleta_colores = ["#005f99", "#2e8b57", "#800080", "#b8860b", "#cd5c5c", "#4682b4", "#556b2f", "#d2691e"]
+colores_asignados = {}
+
+if not df_filtrado.empty:
+    # Obtenemos todas las actividades únicas de este espacio y las ordenamos alfabéticamente
+    actividades_unicas = df_filtrado["Actividad"].astype(str).unique()
+    actividades_unicas.sort() 
+    
+    # Le asignamos un color fijo a cada actividad para siempre
+    for i, act in enumerate(actividades_unicas):
+        colores_asignados[act] = paleta_colores[i % len(paleta_colores)]
+
 # --- LÓGICA DEL CALENDARIO SEMANAL ---
 hoy_real = datetime.date.today()
 dia_referencia = hoy_real + datetime.timedelta(weeks=st.session_state.semana_offset)
@@ -81,9 +94,6 @@ horarios = []
 for h in range(8, 21):
     horarios.append(f"{h:02d}:00")
     horarios.append(f"{h:02d}:30")
-
-paleta_colores = ["#005f99", "#2e8b57", "#800080", "#b8860b", "#cd5c5c", "#4682b4", "#556b2f", "#d2691e"]
-colores_asignados = {}
 
 grilla_texto = pd.DataFrame(index=horarios, columns=columnas_grilla, data="")
 grilla_color = pd.DataFrame(index=horarios, columns=columnas_grilla, data="")
@@ -101,9 +111,8 @@ if not df_filtrado.empty:
             columna_destino = columnas_grilla[indice_dia]
             
             actividad = str(fila['Actividad'])
-            if actividad not in colores_asignados:
-                colores_asignados[actividad] = paleta_colores[len(colores_asignados) % len(paleta_colores)]
-            color_actual = colores_asignados[actividad]
+            # Buscamos el color que se le asignó globalmente a esta actividad
+            color_actual = colores_asignados.get(actividad, "#005f99") 
             
             try:
                 h_ini_str = str(fila["Hora Inicio"])[:5]
@@ -153,7 +162,6 @@ st.divider()
 # --- FORMULARIO PARA NUEVA RESERVA ---
 st.subheader("✍️ Cargar nueva reserva")
 
-# Creamos listas de horarios fijos para los desplegables
 opciones_inicio = [f"{h:02d}:{m:02d}" for h in range(8, 20) for m in (0, 30)] 
 opciones_fin = [f"{h:02d}:{m:02d}" for h in range(8, 20) for m in (0, 30)][1:] + ["20:00"] 
 
@@ -181,10 +189,8 @@ with st.form("formulario_reserva", clear_on_submit=True):
         elif nuevo_inicio_min >= nuevo_fin_min:
             st.error("La hora de fin debe ser posterior a la hora de inicio.")
         else:
-            # --- VALIDACIÓN DE SOLAPAMIENTO MULTI-SEMANA ---
             fechas_con_conflicto = []
             
-            # Generamos todas las fechas que el usuario quiere reservar
             fechas_a_reservar = [nueva_fecha + datetime.timedelta(weeks=i) for i in range(semanas_repetir + 1)]
             
             for fecha_evaluar in fechas_a_reservar:
