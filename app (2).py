@@ -109,13 +109,18 @@ if not df_filtrado.empty:
                     else:
                         grilla_texto.at[slot, columna_destino] += f" | {actividad}"
 
+# --- FUNCIÓN PARA APLICAR COLORES Y CENTRADO FORZADO ---
 def aplicar_colores(df_base):
     df_estilos = pd.DataFrame(index=df_base.index, columns=df_base.columns, data="")
     for col in df_base.columns:
         for idx in df_base.index:
             color = grilla_color.at[idx, col]
             if color != "":
-                df_estilos.at[idx, col] = f'background-color: {color}; color: white; font-weight: bold; text-align: center;'
+                # Usamos !important para obligar a Streamlit a centrar el texto sí o sí
+                df_estilos.at[idx, col] = f'background-color: {color}; color: white; font-weight: bold; text-align: center !important; vertical-align: middle !important;'
+            else:
+                # También centramos las celdas vacías por si acaso
+                df_estilos.at[idx, col] = 'text-align: center !important; vertical-align: middle !important;'
     return df_estilos
 
 grilla_estilada = grilla_texto.style.apply(aplicar_colores, axis=None)
@@ -142,7 +147,6 @@ with st.form("formulario_reserva", clear_on_submit=True):
     submit_button = st.form_submit_button("Confirmar Reserva")
     
     if submit_button:
-        # Convertimos las nuevas horas a minutos para compararlas fácilmente
         nuevo_inicio_min = nueva_hora_inicio.hour * 60 + nueva_hora_inicio.minute
         nuevo_fin_min = nueva_hora_fin.hour * 60 + nueva_hora_fin.minute
 
@@ -151,10 +155,8 @@ with st.form("formulario_reserva", clear_on_submit=True):
         elif nuevo_inicio_min >= nuevo_fin_min:
             st.error("La hora de fin debe ser posterior a la hora de inicio.")
         else:
-            # --- VALIDACIÓN DE SOLAPAMIENTO ---
             solapamiento = False
             
-            # Buscamos si ya hay reservas para esa sala en esa fecha
             reservas_del_dia = df[(df["Espacio"] == espacio_elegido) & (df["Fecha"] == str(nueva_fecha))]
             
             for _, fila in reservas_del_dia.iterrows():
@@ -167,15 +169,13 @@ with st.form("formulario_reserva", clear_on_submit=True):
                 except (ValueError, IndexError):
                     continue
                 
-                # Fórmula matemática para detectar si dos rangos de tiempo se cruzan
                 if (nuevo_inicio_min < existente_fin_min) and (nuevo_fin_min > existente_inicio_min):
                     solapamiento = True
-                    break # Si encontramos un choque, dejamos de buscar
+                    break 
             
             if solapamiento:
                 st.error("❌ El horario seleccionado ya está ocupado (total o parcialmente). Por favor, revisá la grilla e intentá con otra franja.")
             else:
-                # Si no hay solapamiento, guardamos los datos
                 nuevo_registro = pd.DataFrame([{
                     "Fecha": str(nueva_fecha),
                     "Espacio": espacio_elegido,
