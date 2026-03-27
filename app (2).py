@@ -6,15 +6,20 @@ import datetime
 # Configuración básica de la página
 st.set_page_config(page_title="Reservas Hospital", layout="wide")
 
-# --- OCULTAR MARCAS DE AGUA DE STREAMLIT Y GITHUB ---
+# --- OCULTAR MARCAS DE AGUA DE STREAMLIT Y GITHUB (VERSIÓN FUERTE) ---
 hide_streamlit_style = """
             <style>
-            /* Ocultar el botón de Deploy y el menú de arriba a la derecha */
-            [data-testid="stHeaderActionElements"] {display: none;}
-            .stDeployButton {display: none;}
+            /* Ocultar el menú principal de opciones */
+            #MainMenu {visibility: hidden;}
             
-            /* Ocultar el pie de página de 'Made with Streamlit' */
-            footer {visibility: hidden;}
+            /* Ocultar toda la cabecera (donde están el Fork, GitHub y los 3 puntitos) */
+            header {visibility: hidden !important;}
+            
+            /* Ocultar la barra de herramientas flotante de Streamlit Cloud */
+            [data-testid="stToolbar"] {visibility: hidden !important;}
+            
+            /* Ocultar el pie de página */
+            footer {visibility: hidden !important;}
             </style>
             """
 st.markdown(hide_streamlit_style, unsafe_allow_html=True)
