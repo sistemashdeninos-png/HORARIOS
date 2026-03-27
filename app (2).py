@@ -6,6 +6,19 @@ import datetime
 # Configuración básica de la página
 st.set_page_config(page_title="Reservas Hospital", layout="wide")
 
+# --- OCULTAR MARCAS DE AGUA DE STREAMLIT Y GITHUB ---
+hide_streamlit_style = """
+            <style>
+            /* Ocultar el botón de Deploy y el menú de arriba a la derecha */
+            [data-testid="stHeaderActionElements"] {display: none;}
+            .stDeployButton {display: none;}
+            
+            /* Ocultar el pie de página de 'Made with Streamlit' */
+            footer {visibility: hidden;}
+            </style>
+            """
+st.markdown(hide_streamlit_style, unsafe_allow_html=True)
+
 st.title("🗓️HORARIOS DE ESPACIOS🗓️")
 
 # --- NAVEGACIÓN DE SEMANAS ---
