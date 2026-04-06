@@ -6,24 +6,15 @@ import datetime
 # Configuración básica de la página
 st.set_page_config(page_title="Reservas Hospital", layout="wide")
 
-# --- OCULTAR MARCAS DE AGUA DE STREAMLIT Y GITHUB (VERSIÓN DEFINITIVA) ---
+# --- OCULTAR MARCAS DE AGUA DE STREAMLIT Y GITHUB ---
 hide_streamlit_style = """
             <style>
-            /* Ocultar cabecera */
             header {visibility: hidden !important;}
-            
-            /* Ocultar el footer tradicional */
             footer {display: none !important;}
-            
-            /* Ocultar el contenedor inferior moderno de Streamlit */
             div[data-testid="stBottom"] {display: none !important;}
-            
-            /* Ocultar el botón flotante de 'Manage app' o marcas de agua en la nube */
             .viewerBadge_container__1QSob {display: none !important;}
             .viewerBadge_link__1S137 {display: none !important;}
             #st-decoration {display: none !important;}
-            
-            /* Ocultar específicamente el link de Made with Streamlit */
             a[href^="https://streamlit.io"] {display: none !important;}
             </style>
             """
@@ -66,16 +57,14 @@ with col_nav3:
 
 df_filtrado = df[df["Espacio"] == espacio_elegido].copy()
 
-# --- LÓGICA DE COLORES FIJOS GLOBALES ---
+# --- LÓGICA DE COLORES FIJOS GLOBALES (CORREGIDA) ---
 paleta_colores = ["#005f99", "#2e8b57", "#800080", "#b8860b", "#cd5c5c", "#4682b4", "#556b2f", "#d2691e"]
 colores_asignados = {}
 
 if not df_filtrado.empty:
-    # Obtenemos todas las actividades únicas de este espacio y las ordenamos alfabéticamente
-    actividades_unicas = df_filtrado["Actividad"].astype(str).unique()
-    actividades_unicas.sort() 
+    # SOLUCIÓN AL ERROR: Convertimos a lista tradicional de Python y ordenamos de forma segura
+    actividades_unicas = sorted(df_filtrado["Actividad"].astype(str).unique().tolist())
     
-    # Le asignamos un color fijo a cada actividad para siempre
     for i, act in enumerate(actividades_unicas):
         colores_asignados[act] = paleta_colores[i % len(paleta_colores)]
 
@@ -111,7 +100,6 @@ if not df_filtrado.empty:
             columna_destino = columnas_grilla[indice_dia]
             
             actividad = str(fila['Actividad'])
-            # Buscamos el color que se le asignó globalmente a esta actividad
             color_actual = colores_asignados.get(actividad, "#005f99") 
             
             try:
@@ -190,7 +178,6 @@ with st.form("formulario_reserva", clear_on_submit=True):
             st.error("La hora de fin debe ser posterior a la hora de inicio.")
         else:
             fechas_con_conflicto = []
-            
             fechas_a_reservar = [nueva_fecha + datetime.timedelta(weeks=i) for i in range(semanas_repetir + 1)]
             
             for fecha_evaluar in fechas_a_reservar:
